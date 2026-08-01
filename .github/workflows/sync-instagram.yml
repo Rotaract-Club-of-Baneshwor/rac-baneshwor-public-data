@@ -1,0 +1,41 @@
+name: Sync Instagram Feed
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch latest Instagram posts
+        env:
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+        run: |
+          curl -s "https://graph.facebook.com/v22.0/${IG_USER_ID}/media?fields=id,caption,media_url,permalink,timestamp,like_count,comments_count&access_token=${IG_ACCESS_TOKEN}&limit=6" \
+          | jq '{updated_at: (now | todate), posts: .data}' > data/gallery/instagram-feed.json
+
+      - name: Commit to private DB repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/gallery/instagram-feed.json
+          git diff --staged --quiet || git commit -m "chore: sync instagram feed"
+          git push
+
+      - name: Mirror to public data repo
+        env:
+          PUBLIC_DATA_PAT: ${{ secrets.PUBLIC_DATA_PAT }}
+        run: |
+          git clone https://x-access-token:${PUBLIC_DATA_PAT}@github.com/Rotaract-Club-of-Baneshwor/rac-baneshwor-public-data.git public-mirror
+          cp data/gallery/instagram-feed.json public-mirror/instagram-feed.json
+          cd public-mirror
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add instagram-feed.json
+          git diff --staged --quiet || git commit -m "chore: mirror instagram feed"
+          git push
